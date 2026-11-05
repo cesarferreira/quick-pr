@@ -10,7 +10,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   </p>
 
-  <img src="assets/demo-preview.jpg" width="640" alt="Quick PR demo showing fictional pull requests with activity, review and CI badges">
+  <img src="assets/demo-preview.png" width="640" alt="Quick PR demo showing fictional pull requests with activity, review and CI badges">
   <p><sub>Fictional demo data.</sub></p>
 
   <p>
