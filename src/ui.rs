@@ -202,12 +202,20 @@ impl QuickPr {
         }
     }
     fn update_tray(&mut self) {
+        let count = self.snapshot.relevant(&self.prefs).len();
         let tooltip = if self.snapshot.saved_at == 0 {
             "Quick PR — Connecting to GitHub · ⌃⌥P".into()
         } else {
-            self.activity.tooltip()
+            format!(
+                "{count} relevant PR{}\n{}",
+                if count == 1 { "" } else { "s" },
+                self.activity.tooltip()
+            )
         };
-        if let Err(error) = self.shell.activity(self.activity.indicator(), tooltip) {
+        if let Err(error) = self
+            .shell
+            .activity(count, self.activity.indicator(), tooltip)
+        {
             self.error = Some(format!("Could not update menu bar activity: {error}"));
         }
     }

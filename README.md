@@ -68,7 +68,9 @@ The app opens from `~/Applications/Quick PR.app`. Click its menu bar icon or pre
 | 🔵 Blue dot | New activity on a tracked PR |
 | 🔴 Red dot | Failing checks or changes requested |
 | 🟢 Green dot | One of your PRs became approved with passing checks |
-| Icon alone | You’re caught up |
+| No dot | You’re caught up |
+
+The number beside the icon shows your **Relevant PR count** and stays visible when you’re caught up. It’s hidden when there are no relevant PRs. The colored dot shows unread activity separately.
 
 Hover over the icon for a summary. Open the panel to clear the dot and find **New** and **Updated** badges beside the affected PRs. Hover those badges for the reason.
 

@@ -225,7 +225,7 @@ pub struct Shell {
     show: MenuId,
     pub warning: Option<String>,
     dot: Retained<CALayer>,
-    activity_signature: Option<(Indicator, String)>,
+    activity_signature: Option<(usize, Indicator, String)>,
 }
 impl Shell {
     pub fn new() -> Result<Self> {
@@ -302,11 +302,17 @@ impl Shell {
             activity_signature: None,
         })
     }
-    pub fn activity(&mut self, indicator: Indicator, tooltip: String) -> Result<()> {
-        let signature = (indicator, tooltip);
+    pub fn activity(&mut self, count: usize, indicator: Indicator, tooltip: String) -> Result<()> {
+        let signature = (count, indicator, tooltip);
         if self.activity_signature.as_ref() == Some(&signature) {
             return Ok(());
         }
+        // The title extends to the right; keep the dot anchored to the PR symbol.
+        self.tray.set_title(Some(if count > 0 {
+            format!(" {count}")
+        } else {
+            String::new()
+        }));
         let color = match indicator {
             Indicator::Quiet => None,
             Indicator::New => Some((0.18, 0.58, 1.)),
@@ -318,7 +324,7 @@ impl Shell {
             self.dot.setBackgroundColor(Some(&color.CGColor()));
         }
         self.dot.setHidden(color.is_none());
-        self.tray.set_tooltip(Some(&signature.1))?;
+        self.tray.set_tooltip(Some(&signature.2))?;
         self.activity_signature = Some(signature);
         Ok(())
     }
