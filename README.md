@@ -97,6 +97,8 @@ Click **☆ Watch** on a row to follow a PR. Search by title, repository, author
 
 ## Development
 
+Use only fictional accounts, repositories, and task titles in demo fixtures and public screenshots.
+
 ```sh
 cargo run                         # Run the app
 cargo run -- --demo                # Preview with demo PRs and activity

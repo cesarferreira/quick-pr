@@ -121,3 +121,19 @@ fn login_launch_matches_only_the_open_application_login_item_event() {
     assert_eq!(login_item_action(false, 0), LoginItemAction::Keep);
     assert_eq!(login_item_action(false, 3), LoginItemAction::Keep);
 }
+
+#[test]
+fn public_demo_uses_only_fictional_accounts_and_repositories() {
+    let snapshot = demo();
+    assert!(snapshot.login.starts_with("demo-"));
+    for pr in snapshot
+        .needs
+        .iter()
+        .chain(&snapshot.yours)
+        .chain(&snapshot.watching)
+    {
+        assert!(pr.author.starts_with("demo-"));
+        assert!(pr.repo.starts_with("demo/"));
+        assert_eq!(pr.url, "https://github.com/pulls");
+    }
+}

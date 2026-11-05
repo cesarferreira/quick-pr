@@ -456,6 +456,7 @@ pub fn changes(old: &Snapshot, new: &Snapshot) -> Vec<String> {
     messages
 }
 
+// Public demo fixtures must use fictional accounts, repositories, and task titles.
 pub fn demo() -> Snapshot {
     let pr = |id: &str, title: &str, repo: &str, review: &str, checks: &str, draft| PullRequest {
         id: id.into(),
