@@ -1,86 +1,138 @@
-# Quick PR
+<div align="center">
+  <img src="assets/icon.png" width="80" alt="Quick PR icon">
+  <h1>Quick PR</h1>
+  <p><strong>Your pull requests. One glance away.</strong></p>
+  <p>A compact macOS menu bar app for reviews, CI, and the PRs you care about.</p>
 
-A small native macOS pull request radar. Open it from the menu bar or press **Control–Option–P** to see what needs your review, follow your own PRs, and watch CI.
+  <p>
+    <a href="#install"><img src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple&amp;logoColor=white" alt="macOS 12 or later"></a>
+    <img src="https://img.shields.io/badge/built_with-Rust-f74c00?logo=rust&amp;logoColor=white" alt="Built with Rust">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+  </p>
 
-Built with Rust, GPUI and native AppKit glass. No backend, browser extension, or separate GitHub token setup.
+  <img src="assets/screenshot.jpg" width="640" alt="Quick PR showing draft, approved, and changes-requested pull requests, with separate review and CI badges and activity highlights">
+  <p><sub>The native app, shown with demo data.</sub></p>
 
-## Use
+  <p>
+    <a href="#install">Install</a>
+    &nbsp;·&nbsp;
+    <a href="#how-it-works">How it works</a>
+    &nbsp;·&nbsp;
+    <a href="#shortcuts">Shortcuts</a>
+    &nbsp;·&nbsp;
+    <a href="#development">Development</a>
+  </p>
+</div>
 
-Install [GitHub CLI](https://cli.github.com/) and sign in:
+---
+
+## Why Quick PR
+
+Reviews land. Checks finish. Someone asks for changes. Quick PR keeps that work within reach while you get on with everything else.
+
+- **Know what changed.** The menu bar lights up when there’s something new since your last look. Open the panel to see exactly which PRs changed.
+- **Focus on your work.** See your recent PRs, personal review requests, and anything you choose to watch. Team-wide review queues stay out of the way.
+- **Read the status at a glance.** Separate review and CI badges make approvals, failures, drafts, and running checks easy to spot.
+- **Keep it close.** Press **⌃⌥P**, filter the list, and jump straight to a PR. Pin the panel when you’re waiting on a build.
+- **Use your existing login.** GitHub CLI handles authentication, including private repositories you already have access to.
+
+Native Rust + GPUI, with Liquid Glass on supported macOS versions and a blurred fallback.
+
+## Install
+
+Currently built from source. You’ll need **macOS 12+**, [Rust](https://rustup.rs/) (current stable), and Xcode Command Line Tools.
+
+Set up GitHub CLI if you haven’t already:
 
 ```sh
 brew install gh
 gh auth login
 ```
 
-Then build and launch:
+Then build and install:
 
 ```sh
+git clone https://github.com/cesarferreira/quick-pr.git
+cd quick-pr
 make install
 ```
 
-This packages a signed local app and installs it to `~/Applications/Quick PR.app`. Requires macOS 12+, Rust with edition 2024 and file locking support, and Xcode command line tools. GPUI compiles shaders at runtime, so the standalone Metal compiler is not required. Liquid Glass is used on supported macOS versions, with a blurred fallback.
+The app opens from `~/Applications/Quick PR.app`. Click its menu bar icon or press **Control–Option–P**. Open at login is enabled by default; toggle **Login on/off** in the panel.
 
-Open at login is on by default. Quick PR then starts when you log in and stays in the menu bar; the panel does not open by itself. Use **Login off** in the panel to stop that. If macOS asks for approval, enable Quick PR in System Settings → General → Login Items. This applies to the installed app. `cargo run` does not add a login item.
+## How it works
 
-- **Relevant:** a combined, deduplicated list of your PRs and PRs requesting your review personally, active in the last **14 days**. Team-only review requests and older activity are excluded. Open PRs you explicitly watch also appear here, regardless of age.
-- **Yours:** your open PRs active in the last 14 days, including drafts.
-- **Watching:** click **Watch** on any listed PR to follow it. Click **Watching** on the row to unwatch. Hover for a description of either action. Watched PRs remain visible after closing or merging. Maximum 100 watched PRs.
-- Click a title to open the PR in your default browser.
-- **Pin** keeps the panel visible when you switch apps.
-- Filter by title, repository, author or PR number.
-- Status badges combine text, icons and color: green for approved/passing, red for changes requested/failing, amber for awaiting review/running, gray for drafts/no checks, and purple for merged PRs. Review and CI states have separate badges.
-- Watch, pin, refresh, alerts, open at login, browser and quit controls have hover tooltips.
-- Right-click the menu bar icon for Refresh and Quit.
-- The menu bar count matches the Relevant list. The activity window appears beside your account name.
-- GitHub `updated` activity includes pushes, comments and other changes; it does not measure only your own activity. This relevance rule is explicit and may differ from Dia’s configured Live Group.
+### A small signal when something changes
+
+| Menu bar | What changed since your last look |
+| --- | --- |
+| 🔵 Blue dot | New activity on a tracked PR |
+| 🔴 Red dot | Failing checks or changes requested |
+| 🟢 Green dot | One of your PRs became approved with passing checks |
+| Icon alone | You’re caught up |
+
+Hover over the icon for a summary. Open the panel to clear the dot and find **New** and **Updated** badges beside the affected PRs. Hover those badges for the reason.
+
+Red takes priority over green, then blue. The first sync is quiet, and unread activity survives app restarts.
+
+### Three views of your work
+
+| View | What’s inside |
+| --- | --- |
+| **Relevant** | Your PRs and personal review requests active in the last 14 days, plus open PRs you explicitly watch |
+| **Yours** | Your recent open PRs, including drafts |
+| **Watching** | PRs you’ve chosen to follow, even after they’re merged or closed |
+
+Click **☆ Watch** on a row to follow a PR. Search by title, repository, author, or number. Click its title to open it in your browser.
+
+## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| Control–Option–P | Show / hide |
-| Escape | Hide |
-| Command–R | Refresh |
-| Command–1 / 2 / 3 | Relevant / Yours / Watching |
-| Up / Down, Return | Select and open a PR |
-| Command–Shift–P | Pin / unpin |
-
-If the global shortcut is already taken, the panel displays a warning and the menu bar still works.
-
-## GitHub access and refresh
-
-Quick PR uses the active **github.com** account in `gh`. It does not read, copy or store your token. Private repositories require the relevant permissions and any organization SSO authorization in GitHub CLI. GitHub Enterprise hosts are not supported in this version.
-
-`gh` still consumes GitHub API quota. Quick PR discovers PR IDs in one GraphQL query, then fetches status in batches of ten to avoid timeouts on large repositories. PRs appearing in multiple tabs are fetched once per refresh. The account lookup is cached by `gh` for one hour. It never polls each PR individually. A refresh for 60 distinct PRs normally uses seven GraphQL requests, rather than a separate request for each PR or check run.
-
-- Refreshes about once a minute while visible and every five minutes while hidden.
-- Errors trigger exponential backoff, up to one hour; rate limit errors pause automatic refresh for an hour.
-- A nearly exhausted GraphQL budget also pauses automatic refresh for an hour.
-- Manual refresh is available, with a ten-second minimum between attempts.
-- Network work stays off the UI thread and each `gh` process has a 25-second timeout.
-- Each search shows the first 100 PRs, sorted by recent updates. A notice appears when more results exist.
-
-Caches from the previous broad search policy are ignored on upgrade. The last successful snapshot under the current relevance policy remains available offline; its age and any refresh error remain visible. Search indexing can make recent GitHub changes take a little time to appear.
-
-## Alerts
-
-Alerts are off by default. Enable **Alerts on** in the panel for new review requests, failing checks, new discussion and transitions to approved with passing checks. The first sync and unchanged polls are silent. These are status signals, not a guarantee of mergeability or satisfaction of every repository rule.
-
-Notifications currently use macOS AppleScript notifications. Delivery depends on your macOS notification settings for the script notification sender; banners and their app identity may differ from a native notification integration.
-
-## Local data
-
-Preferences and the last PR snapshot live in `~/Library/Application Support/Quick PR/`. This includes PR titles and repository names. The directory and files are restricted to your user. Delete it to reset preferences and the cache.
+| **⌃⌥P** | Show / hide the panel |
+| **Esc** | Dismiss |
+| **⌘R** | Refresh |
+| **⌘1 / ⌘2 / ⌘3** | Relevant / Yours / Watching |
+| **↑ / ↓**, **Return** | Select and open a PR |
+| **⌘⇧P** | Pin / unpin |
 
 ## Development
 
 ```sh
-cargo run                  # launch the live app
-cargo run -- --demo         # isolated sample data; no GitHub requests or saved preferences
-cargo run -- --check        # read-only live GitHub connection check; print counts
-cargo test
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-./scripts/package.sh --debug
+cargo run                         # Run the app
+cargo run -- --demo                # Preview with demo PRs and activity
+cargo run -- --demo --background   # Preview the unread menu bar indicator
+cargo run -- --check               # Check your live GitHub connection
+make test                         # Run tests
+make check                        # Formatting and Clippy
+make package                      # Build dist/Quick PR.app
 ```
 
-`make package` creates `dist/Quick PR.app`. Packaging uses local ad-hoc signing; distribution notarization is not configured. Nothing creates a repository or pushes code.
+<details>
+<summary><strong>GitHub access, refresh, and local data</strong></summary>
+
+Quick PR uses the active **github.com** account in `gh`; GitHub Enterprise hosts are not supported yet. It does not copy or store your token. For private repositories, authorize any required organization SSO access in GitHub CLI.
+
+It refreshes about once a minute while visible and every five minutes in the background. Requests are batched and results are cached; `gh` still consumes GitHub API quota. Errors trigger backoff, and a low rate-limit budget pauses automatic refresh. Press **⌘R** to refresh manually.
+
+Each search shows up to 100 PRs, with a notice when more results exist. Explicit watches are limited to 100. “Recent” means GitHub activity in the last 14 days, including pushes and discussion. Cached results remain visible offline with their last update time.
+
+Opening the panel marks the loaded changes as seen. Updates that arrive while it stays visible are highlighted immediately and considered seen. Switching GitHub accounts resets the activity baseline.
+
+Preferences, PR snapshots, and last-viewed activity are stored in `~/Library/Application Support/Quick PR/`, restricted to your user. Delete that directory to reset the app.
+
+</details>
+
+<details>
+<summary><strong>Notifications and macOS setup</strong></summary>
+
+System notifications are off by default. Toggle **Alerts on/off** for review requests, failing CI, new discussion, and approval with passing checks. Notifications currently use AppleScript, so delivery and sender identity depend on macOS notification settings. Passing checks and approval do not guarantee a PR meets every merge rule.
+
+Open at login requires macOS 13+ and the installed app. If approval is needed, enable Quick PR in **System Settings → General → Login Items**. If **⌃⌥P** is already in use, the menu bar still works and the panel shows a shortcut warning.
+
+Local builds are ad-hoc signed. Distribution notarization is not configured.
+
+</details>
+
+## License
+
+[MIT](LICENSE)
