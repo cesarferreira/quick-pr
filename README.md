@@ -10,8 +10,6 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   </p>
 
-  <img src="assets/screenshot.png" width="640" alt="Quick PR demo preview showing PR activity, review status, and CI checks">
-  <p><sub>The native app, shown with demo data.</sub></p>
 
   <p>
     <a href="#install">Install</a>
