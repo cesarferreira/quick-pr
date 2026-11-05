@@ -137,6 +137,34 @@ Local builds are ad-hoc signed. Distribution notarization is not configured.
 
 </details>
 
+## Releasing
+
+Release from a clean `main` checkout on macOS, with GitHub CLI authenticated and
+crates.io credentials configured using `cargo login`.
+
+```sh
+make release-dry-run LEVEL=patch  # Checks and preview; no upload, tag, or push
+make release LEVEL=patch          # Publish, commit version/changelog, tag, push
+```
+
+Like stax, `LEVEL` defaults to `minor`; use `LEVEL=release` to publish the current
+version unchanged (including the first `0.1.0` release), or pass an explicit version.
+The Make targets install `cargo-release` and `git-cliff` if needed. Both modes run
+tests, formatting checks, and Clippy first. The actual release requires a public
+repository; it never changes repository visibility.
+
+`cargo-release` updates the version and `CHANGELOG.md`, commits those changes,
+publishes to crates.io locally, then tags and pushes `v<version>`. That tag triggers GitHub Actions to build Apple Silicon and
+Intel `.app` ZIPs and attach them, with SHA-256 checksums, to a GitHub release.
+The apps are ad-hoc signed, without notarization. If packaging fails after the
+crate is published, fix the workflow and rerun it on the same tag; crates.io
+versions cannot be overwritten.
+
+After publication, `cargo install quick-pr --locked` will install the macOS
+executable. It does not install an app bundle; use the GitHub release ZIP for the
+`.app`, or `make install` when building from source. GitHub CLI is required for
+all install methods.
+
 ## License
 
 [MIT](LICENSE)

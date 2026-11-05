@@ -19,14 +19,15 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
-cargo build "${BUILD_ARGS[@]}" --package quick-pr
+cargo build --locked "${BUILD_ARGS[@]}" --package quick-pr
 METADATA="$(cargo metadata --no-deps --format-version 1)"
 TARGET_DIR="$(/usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])' <<< "$METADATA")"
 VERSION="$(/usr/bin/python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "quick-pr"))' <<< "$METADATA")"
 APP="$ROOT/dist/Quick PR.app"
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$TARGET_DIR/$PROFILE/quick-pr" "$APP/Contents/MacOS/quick-pr"
+BINARY_DIR="$TARGET_DIR/${CARGO_BUILD_TARGET:+$CARGO_BUILD_TARGET/}$PROFILE"
+cp "$BINARY_DIR/quick-pr" "$APP/Contents/MacOS/quick-pr"
 chmod +x "$APP/Contents/MacOS/quick-pr"
 xcrun swift "$ROOT/scripts/generate-icon.swift" "$APP/Contents/Resources"
 

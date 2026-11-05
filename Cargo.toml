@@ -2,6 +2,13 @@
 name = "quick-pr"
 version = "0.1.0"
 edition = "2024"
+authors = ["Cesar Ferreira"]
+repository = "https://github.com/cesarferreira/quick-pr"
+homepage = "https://github.com/cesarferreira/quick-pr"
+readme = "README.md"
+keywords = ["github", "pull-requests", "macos", "menubar"]
+categories = ["development-tools"]
+include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md", "assets/icon.png"]
 license = "MIT"
 description = "A native macOS pull request radar, powered by GitHub CLI"
 

@@ -1,0 +1,76 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Package ${{ matrix.target }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify release tag
+        shell: bash
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          test "$GITHUB_REF_NAME" = "v$version"
+      - name: Package app
+        run: |
+          ./scripts/package.sh
+          case "$CARGO_BUILD_TARGET" in
+            aarch64-apple-darwin) arch=arm64 ;;
+            x86_64-apple-darwin) arch=x86_64 ;;
+          esac
+          lipo -verify_arch "$arch" 'dist/Quick PR.app/Contents/MacOS/quick-pr'
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' 'dist/Quick PR.app/Contents/Info.plist')
+          ditto -c -k --sequesterRsrc --keepParent 'dist/Quick PR.app' "dist/quick-pr-${version}-${CARGO_BUILD_TARGET}.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: quick-pr-${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: quick-pr-*
+          path: dist
+          merge-multiple: true
+      - name: Check archives and generate checksums
+        shell: bash
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          cd dist
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            test -s "quick-pr-${version}-${target}.zip"
+            unzip -t "quick-pr-${version}-${target}.zip"
+          done
+          sha256sum *.zip > SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS
