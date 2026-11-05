@@ -5,8 +5,12 @@ use gpui_component::{
     input::{Input, InputEvent, InputState},
     tooltip::Tooltip,
 };
-use quick_pr::github::{self, Preferences, PullRequest, Snapshot};
+use quick_pr::{
+    activity::{Activity, Change, Indicator},
+    github::{self, Preferences, PullRequest, Snapshot},
+};
 use std::{
+    collections::BTreeMap,
     sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
@@ -42,6 +46,8 @@ pub fn bind_keys(cx: &mut App) {
 type FetchResult = Result<Snapshot, String>;
 pub struct QuickPr {
     snapshot: Snapshot,
+    activity: Activity,
+    highlights: BTreeMap<String, Change>,
     prefs: Preferences,
     shell: Shell,
     input: Entity<InputState>,
@@ -112,9 +118,27 @@ impl QuickPr {
                 .detach();
             }
         });
+        let mut activity: Activity = if demo {
+            Activity::default()
+        } else {
+            github::load("activity.json")
+        };
+        if demo {
+            // Demonstrate unread activity without touching the real account or cache.
+            let mut previous = snapshot.clone();
+            previous.needs.pop();
+            previous.yours[0].comments = 0;
+            previous.yours[1].review = "REVIEW_REQUIRED".into();
+            previous.yours[2].checks = "SUCCESS".into();
+            previous.yours[2].review = "REVIEW_REQUIRED".into();
+            activity.observe(&previous, &prefs);
+        }
+        activity.observe(&snapshot, &prefs);
         let (tx, rx) = mpsc::channel();
         let mut this = Self {
             snapshot,
+            activity,
+            highlights: BTreeMap::new(),
             prefs,
             shell,
             input,
@@ -135,7 +159,8 @@ impl QuickPr {
             login_note: None,
             _subscriptions: vec![search, appearance, activation],
         };
-        this.shell.badge(this.snapshot.relevant(&this.prefs).len());
+        this.save_activity();
+        this.update_tray();
         if !demo {
             this.apply_login_item(false);
             this.refresh(false, cx);
@@ -155,6 +180,8 @@ impl QuickPr {
         this
     }
     pub fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.highlights = self.activity.pending.clone();
+        self.mark_seen();
         native::show_panel(window, cx);
         window.focus(&self.focus);
         let stale = self.snapshot.saved_at == 0
@@ -166,6 +193,29 @@ impl QuickPr {
             self.refresh(true, cx);
         }
         cx.notify();
+    }
+    fn save_activity(&mut self) {
+        if !self.demo
+            && let Err(error) = github::save("activity.json", &self.activity)
+        {
+            self.error = Some(format!("Could not save last-viewed activity: {error}"));
+        }
+    }
+    fn update_tray(&mut self) {
+        let tooltip = if self.snapshot.saved_at == 0 {
+            "Quick PR — Connecting to GitHub · ⌃⌥P".into()
+        } else {
+            self.activity.tooltip()
+        };
+        if let Err(error) = self.shell.activity(self.activity.indicator(), tooltip) {
+            self.error = Some(format!("Could not update menu bar activity: {error}"));
+        }
+    }
+    fn mark_seen(&mut self) {
+        self.highlights.extend(self.activity.pending.clone());
+        self.activity.acknowledge(&self.snapshot, &self.prefs);
+        self.save_activity();
+        self.update_tray();
     }
     fn apply_login_item(&mut self, interactive: bool) {
         if self.demo {
@@ -231,13 +281,22 @@ impl QuickPr {
                             );
                         }
                     }
+                    if self.snapshot.login != snapshot.login {
+                        self.highlights.clear();
+                    }
+                    self.activity.observe(&snapshot, &self.prefs);
                     self.snapshot = snapshot;
                     self.failures = 0;
                     self.error = None;
                     if let Err(e) = github::save("snapshot.json", &self.snapshot) {
                         self.error = Some(format!("Could not save offline cache: {e}"));
                     }
-                    self.shell.badge(self.snapshot.relevant(&self.prefs).len());
+                    if native::panel_visible(window) {
+                        self.mark_seen();
+                    } else {
+                        self.save_activity();
+                        self.update_tray();
+                    }
                 }
                 Err(error) => {
                     self.failures = self.failures.saturating_add(1);
@@ -311,7 +370,8 @@ impl QuickPr {
         } else {
             self.error = Some("You can watch up to 100 PRs. Unwatch one to add another.".into());
         }
-        self.shell.badge(self.snapshot.relevant(&self.prefs).len());
+        self.activity.observe(&self.snapshot, &self.prefs);
+        self.mark_seen();
         if !self.demo {
             if let Err(e) = github::save("preferences.json", &self.prefs) {
                 self.error = Some(format!("Could not save watched PRs: {e}"));
@@ -363,6 +423,7 @@ impl QuickPr {
     }
     fn pr_row(&self, pr: PullRequest, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let selected = index == self.selected;
+        let change = self.highlights.get(&pr.id).cloned();
         let watched = self.prefs.watched.contains(&pr.id);
         let dark = cx.theme().mode.is_dark();
         let green = if dark { 0x54cba0 } else { 0x16734e };
@@ -455,6 +516,20 @@ impl QuickPr {
                             .gap_2()
                             .text_size(px(11.))
                             .flex_wrap()
+                            .when_some(change, |row, change| {
+                                let (icon, color) = match change.indicator {
+                                    Indicator::Problem => (IconName::TriangleAlert, red),
+                                    Indicator::Ready => (IconName::CircleCheck, green),
+                                    _ => (IconName::Bell, if dark { 0x6bb4ff } else { 0x1769b2 }),
+                                };
+                                row.child(
+                                    badge(if change.new { "New" } else { "Updated" }, icon, color)
+                                        .id(SharedString::from(format!("activity-{}", pr.id)))
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(change.summary.clone()).build(window, cx)
+                                        }),
+                                )
+                            })
                             .child(badge(pr.review_label(), review_icon, review_color))
                             .child(badge(pr.checks_label(), checks_icon, checks_color)),
                     ),

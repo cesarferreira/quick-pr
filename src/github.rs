@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PullRequest {
     pub id: String,
     pub title: String,
@@ -21,6 +21,8 @@ pub struct PullRequest {
     pub review: String,
     pub checks: String,
     pub comments: u64,
+    #[serde(default)]
+    pub updated_at: String,
 }
 impl PullRequest {
     pub fn from_node(v: &Value) -> Option<Self> {
@@ -33,6 +35,7 @@ impl PullRequest {
         }
         Some(Self {
             id: v["id"].as_str()?.into(),
+            updated_at: v["updatedAt"].as_str().unwrap_or_default().into(),
             title: v["title"].as_str()?.into(),
             url,
             number: v["number"].as_u64()?,
@@ -254,7 +257,7 @@ pub fn run_gh(args: &[&str]) -> Result<String> {
 }
 
 const FIELDS: &str = r#"
-    __typename id title url number state isDraft reviewDecision
+    __typename id title url number state isDraft reviewDecision updatedAt
     author { login } repository { nameWithOwner }
     comments { totalCount } reviews { totalCount } reviewThreads { totalCount }
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -466,6 +469,7 @@ pub fn demo() -> Snapshot {
         state: "OPEN".into(),
         url: "https://github.com/pulls".into(),
         comments: 2,
+        updated_at: String::new(),
     };
     Snapshot {
         relevance_version: RELEVANCE_VERSION,

@@ -10,8 +10,9 @@ use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSAutoresizingMaskOptions, NSColor, NSEvent,
     NSGlassEffectView, NSGlassEffectViewStyle, NSScreen, NSView, NSWindow, NSWindowStyleMask,
 };
-use objc2_foundation::{NSAppleEventManager, NSBundle, NSError, NSObject, NSPoint};
-use objc2_quartz_core::kCACornerCurveContinuous;
+use objc2_foundation::{NSAppleEventManager, NSBundle, NSError, NSObject, NSPoint, NSRect, NSSize};
+use objc2_quartz_core::{CALayer, kCACornerCurveContinuous};
+use quick_pr::activity::Indicator;
 use quick_pr::login_item::{self, LoginItemAction};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::cell::Cell;
@@ -223,7 +224,8 @@ pub struct Shell {
     quit: MenuId,
     show: MenuId,
     pub warning: Option<String>,
-    count: usize,
+    dot: Retained<CALayer>,
+    activity_signature: Option<(Indicator, String)>,
 }
 impl Shell {
     pub fn new() -> Result<Self> {
@@ -265,6 +267,28 @@ impl Shell {
             .with_menu_on_left_click(false)
             .build()
             .context("Could not create menu bar icon")?;
+        // Keep the PR symbol as an adaptive template image. A separate color layer
+        // preserves the activity dot's color without disabling macOS icon tinting.
+        let mtm =
+            MainThreadMarker::new().context("Menu bar indicator must run on the main thread")?;
+        let button = tray
+            .ns_status_item()
+            .and_then(|item| item.button(mtm))
+            .context("Could not find the menu bar button")?;
+        button.setWantsLayer(true);
+        let layer = button
+            .layer()
+            .context("Could not create menu bar backing layer")?;
+        let dot = CALayer::layer();
+        let bounds = button.bounds();
+        dot.setFrame(NSRect::new(
+            NSPoint::new(bounds.size.width - 8., 3.),
+            NSSize::new(6., 6.),
+        ));
+        dot.setCornerRadius(3.);
+        dot.setZPosition(10.);
+        dot.setHidden(true);
+        layer.addSublayer(&dot);
         Ok(Self {
             tray,
             _menu: menu,
@@ -274,18 +298,29 @@ impl Shell {
             refresh: refresh.id().clone(),
             quit: quit.id().clone(),
             warning,
-            count: usize::MAX,
+            dot,
+            activity_signature: None,
         })
     }
-    pub fn badge(&mut self, count: usize) {
-        if self.count != count {
-            self.count = count;
-            self.tray.set_title(Some(if count > 0 {
-                format!(" {count}")
-            } else {
-                String::new()
-            }));
+    pub fn activity(&mut self, indicator: Indicator, tooltip: String) -> Result<()> {
+        let signature = (indicator, tooltip);
+        if self.activity_signature.as_ref() == Some(&signature) {
+            return Ok(());
         }
+        let color = match indicator {
+            Indicator::Quiet => None,
+            Indicator::New => Some((0.18, 0.58, 1.)),
+            Indicator::Ready => Some((0.20, 0.80, 0.43)),
+            Indicator::Problem => Some((1., 0.29, 0.27)),
+        };
+        if let Some((r, g, b)) = color {
+            let color = NSColor::colorWithSRGBRed_green_blue_alpha(r, g, b, 1.);
+            self.dot.setBackgroundColor(Some(&color.CGColor()));
+        }
+        self.dot.setHidden(color.is_none());
+        self.tray.set_tooltip(Some(&signature.1))?;
+        self.activity_signature = Some(signature);
+        Ok(())
     }
     pub fn poll(&self) -> Vec<Event> {
         let mut events = vec![];
