@@ -1,3 +1,5 @@
+![Quick PR demo preview showing PR activity, review status, and CI checks](assets/screenshot.jpg)
+
 <div align="center">
   <img src="assets/icon.png" width="80" alt="Quick PR icon">
   <h1>Quick PR</h1>
@@ -9,9 +11,6 @@
     <img src="https://img.shields.io/badge/built_with-Rust-f74c00?logo=rust&amp;logoColor=white" alt="Built with Rust">
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   </p>
-
-  <img src="assets/screenshot.jpg" width="640" alt="Quick PR showing draft, approved, and changes-requested pull requests, with separate review and CI badges and activity highlights">
-  <p><sub>The native app, shown with demo data.</sub></p>
 
   <p>
     <a href="#install">Install</a>
