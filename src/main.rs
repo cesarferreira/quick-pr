@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
                 focus: false,
                 is_resizable: true,
                 is_minimizable: false,
-                window_min_size: Some(size(px(420.), px(300.))),
+                window_min_size: Some(size(px(420.), px(200.))),
                 window_background: WindowBackgroundAppearance::Transparent,
                 app_id: Some("com.cesarferreira.quick-pr".into()),
                 ..Default::default()

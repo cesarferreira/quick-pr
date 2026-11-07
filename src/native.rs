@@ -50,6 +50,32 @@ pub fn panel_visible(window: &Window) -> bool {
     native_window(window).is_some_and(|native| native.isVisible())
 }
 
+/// Keep the top edge in place while fitting content on the current display.
+pub fn fit_panel_height(window: &Window, content_height: f64, cx: &mut App) {
+    let Some(native) = native_window(window) else {
+        return;
+    };
+    let Some(screen) = native.screen() else {
+        return;
+    };
+    let visible = screen.visibleFrame();
+    let mut frame = native.frame();
+    let height = quick_pr::layout::panel_height(content_height, visible.size.height);
+    if (frame.size.height - height).abs() < 1. {
+        return;
+    }
+    frame.origin.y = (frame.origin.y + frame.size.height - height).clamp(
+        visible.origin.y,
+        visible.origin.y + visible.size.height - height,
+    );
+    frame.size.height = height;
+    // AppKit synchronously calls GPUI's resize callback. Run outside the current
+    // window update so that callback can borrow the window and update its layout.
+    cx.foreground_executor()
+        .spawn(async move { native.setFrame_display(frame, true) })
+        .detach();
+}
+
 pub fn start_drag(window: &Window) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;

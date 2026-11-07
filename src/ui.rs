@@ -475,6 +475,28 @@ impl QuickPr {
         } else {
             review_color
         };
+        // Stable across refreshes, sort order, and restarts; GitHub names ignore case.
+        let repo_hue = pr
+            .repo
+            .to_ascii_lowercase()
+            .bytes()
+            .fold(2_166_136_261u32, |hash, byte| {
+                (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+            })
+            % 360;
+        let repo_color = hsla(
+            repo_hue as f32 / 360.,
+            0.65,
+            if dark { 0.76 } else { 0.32 },
+            1.,
+        );
+        let own =
+            !self.snapshot.login.is_empty() && pr.author.eq_ignore_ascii_case(&self.snapshot.login);
+        let author_background = if own {
+            rgb(if dark { 0x7352b8 } else { 0x6840ac })
+        } else {
+            rgba(0x88888820)
+        };
         let url = pr.url.clone();
         let star = pr.clone();
         div()
@@ -513,13 +535,40 @@ impl QuickPr {
                         div()
                             .mt(px(2.))
                             .text_size(px(11.))
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_1()
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!(
-                                "{}  ·  #{}  ·  {}",
-                                pr.repo,
-                                pr.number,
-                                pr.author_label(&self.snapshot.login)
-                            )),
+                            .child(
+                                div()
+                                    .px(px(5.))
+                                    .py(px(1.))
+                                    .rounded_md()
+                                    .bg(hsla(repo_color.h, repo_color.s, repo_color.l, 0.14))
+                                    .text_color(repo_color)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(pr.repo.clone()),
+                            )
+                            .child(format!("#{}", pr.number))
+                            .child(
+                                div()
+                                    .px(px(5.))
+                                    .py(px(1.))
+                                    .rounded_md()
+                                    .bg(author_background)
+                                    .text_color(if own {
+                                        rgb(0xffffff).into()
+                                    } else {
+                                        cx.theme().muted_foreground
+                                    })
+                                    .font_weight(if own {
+                                        FontWeight::SEMIBOLD
+                                    } else {
+                                        FontWeight::MEDIUM
+                                    })
+                                    .child(pr.author_label(&self.snapshot.login)),
+                            ),
                     )
                     .child(
                         div()
@@ -583,6 +632,7 @@ impl QuickPr {
 impl Render for QuickPr {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows(cx);
+        let measured_scroll = self.scroll.clone();
         self.selected = self.selected.min(rows.len().saturating_sub(1));
         let muted = cx.theme().muted_foreground;
         let dark = cx.theme().mode.is_dark();
@@ -912,6 +962,32 @@ impl Render for QuickPr {
                         ))),
                 )
                 .child(self.button("quit", "Quit").on_click(|_, _, cx| cx.quit())),
+        )
+        .child(
+            canvas(
+                |_, _, _| (),
+                move |bounds, _, window, cx| {
+                    // Read row and viewport bounds from this same completed
+                    // layout pass, including wrapped text and the empty state.
+                    if let Some(first) = measured_scroll.bounds_for_item(0) {
+                        let last = (1..)
+                            .map_while(|index| measured_scroll.bounds_for_item(index))
+                            .last()
+                            .unwrap_or(first);
+                        let chrome = bounds.size.height - measured_scroll.bounds().size.height;
+                        let content = last.bottom() - first.top() + px(8.);
+                        native::fit_panel_height(
+                            window,
+                            f64::from(f32::from(chrome + content)),
+                            cx,
+                        );
+                    }
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full(),
         )
     }
 }
