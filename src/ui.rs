@@ -586,11 +586,18 @@ impl QuickPr {
                                     .child(pr.author_label(&self.snapshot.login)),
                             )
                             .when_some(self.status_history.change_time(&pr.id), |row, time| {
+                                let now = github::now();
+                                let time_color = match now.saturating_sub(time.at) {
+                                    0..3600 => green,
+                                    3600..86400 => amber,
+                                    _ => gray,
+                                };
                                 row.child(
                                     div()
                                         .id(SharedString::from(format!("change-time-{}", pr.id)))
                                         .ml_1()
-                                        .child(relative_age(time.at, github::now()))
+                                        .text_color(rgb(time_color))
+                                        .child(relative_age(time.at, now))
                                         .tooltip(move |window, cx| {
                                             Tooltip::new(time.tooltip()).build(window, cx)
                                         }),
