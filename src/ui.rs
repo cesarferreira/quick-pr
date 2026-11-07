@@ -8,6 +8,7 @@ use gpui_component::{
 use quick_pr::{
     activity::{Activity, Change, Indicator},
     github::{self, Preferences, PullRequest, Snapshot},
+    status_history::{StatusHistory, relative_age},
 };
 use std::{
     collections::BTreeMap,
@@ -47,13 +48,14 @@ type FetchResult = Result<Snapshot, String>;
 pub struct QuickPr {
     snapshot: Snapshot,
     activity: Activity,
+    status_history: StatusHistory,
     highlights: BTreeMap<String, Change>,
     prefs: Preferences,
     shell: Shell,
     input: Entity<InputState>,
     focus: FocusHandle,
     tab: usize,
-    selected: usize,
+    selected: Option<usize>,
     scroll: ScrollHandle,
     pinned: bool,
     loading: bool,
@@ -85,7 +87,7 @@ impl QuickPr {
         });
         let search = cx.subscribe(&input, |this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
-                this.selected = 0;
+                this.selected = None;
                 this.scroll.scroll_to_item(0);
                 cx.notify();
             }
@@ -134,17 +136,24 @@ impl QuickPr {
             activity.observe(&previous, &prefs);
         }
         activity.observe(&snapshot, &prefs);
+        let mut status_history: StatusHistory = if demo {
+            StatusHistory::default()
+        } else {
+            github::load("status-history.json")
+        };
+        status_history.observe(&snapshot);
         let (tx, rx) = mpsc::channel();
         let mut this = Self {
             snapshot,
             activity,
+            status_history,
             highlights: BTreeMap::new(),
             prefs,
             shell,
             input,
             focus: cx.focus_handle(),
             tab: 0,
-            selected: 0,
+            selected: None,
             scroll: ScrollHandle::new(),
             pinned: false,
             loading: false,
@@ -180,6 +189,7 @@ impl QuickPr {
         this
     }
     pub fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.selected = None;
         self.highlights = self.activity.pending.clone();
         self.mark_seen();
         native::show_panel(window, cx);
@@ -199,6 +209,11 @@ impl QuickPr {
             && let Err(error) = github::save("activity.json", &self.activity)
         {
             self.error = Some(format!("Could not save last-viewed activity: {error}"));
+        }
+        if !self.demo
+            && let Err(error) = github::save("status-history.json", &self.status_history)
+        {
+            self.error = Some(format!("Could not save status-change times: {error}"));
         }
     }
     fn update_tray(&mut self) {
@@ -292,6 +307,7 @@ impl QuickPr {
                     if self.snapshot.login != snapshot.login {
                         self.highlights.clear();
                     }
+                    self.status_history.observe(&snapshot);
                     self.activity.observe(&snapshot, &self.prefs);
                     self.snapshot = snapshot;
                     self.failures = 0;
@@ -392,7 +408,7 @@ impl QuickPr {
     }
     fn select_tab(&mut self, tab: usize, cx: &mut Context<Self>) {
         self.tab = tab;
-        self.selected = 0;
+        self.selected = None;
         self.scroll.scroll_to_item(0);
         cx.notify();
     }
@@ -430,7 +446,7 @@ impl QuickPr {
             .hover(|s| s.bg(rgba(0x88888822)))
     }
     fn pr_row(&self, pr: PullRequest, index: usize, cx: &mut Context<Self>) -> AnyElement {
-        let selected = index == self.selected;
+        let selected = self.selected == Some(index);
         let change = self.highlights.get(&pr.id).cloned();
         let watched = self.prefs.watched.contains(&pr.id);
         let dark = cx.theme().mode.is_dark();
@@ -568,7 +584,18 @@ impl QuickPr {
                                         FontWeight::MEDIUM
                                     })
                                     .child(pr.author_label(&self.snapshot.login)),
-                            ),
+                            )
+                            .when_some(self.status_history.change_time(&pr.id), |row, time| {
+                                row.child(
+                                    div()
+                                        .id(SharedString::from(format!("change-time-{}", pr.id)))
+                                        .ml_1()
+                                        .child(relative_age(time.at, github::now()))
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(time.tooltip()).build(window, cx)
+                                        }),
+                                )
+                            }),
                     )
                     .child(
                         div()
@@ -633,7 +660,10 @@ impl Render for QuickPr {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows(cx);
         let measured_scroll = self.scroll.clone();
-        self.selected = self.selected.min(rows.len().saturating_sub(1));
+        self.selected = self
+            .selected
+            .filter(|_| !rows.is_empty())
+            .map(|index| index.min(rows.len() - 1));
         let muted = cx.theme().muted_foreground;
         let dark = cx.theme().mode.is_dark();
         let age = github::now().saturating_sub(self.snapshot.saved_at);
@@ -672,17 +702,22 @@ impl Render for QuickPr {
             .on_action(cx.listener(|this, _: &Yours, _, cx| this.select_tab(1, cx)))
             .on_action(cx.listener(|this, _: &Watching, _, cx| this.select_tab(2, cx)))
             .on_action(cx.listener(|this, _: &Next, _, cx| {
-                this.selected = (this.selected + 1).min(this.rows(cx).len().saturating_sub(1));
-                this.scroll.scroll_to_item(this.selected);
+                let index = this
+                    .selected
+                    .map_or(0, |index| index.saturating_add(1))
+                    .min(this.rows(cx).len().saturating_sub(1));
+                this.selected = Some(index);
+                this.scroll.scroll_to_item(index);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Previous, _, cx| {
-                this.selected = this.selected.saturating_sub(1);
-                this.scroll.scroll_to_item(this.selected);
+                let index = this.selected.map_or(0, |index| index.saturating_sub(1));
+                this.selected = Some(index);
+                this.scroll.scroll_to_item(index);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &OpenSelected, window, cx| {
-                if let Some(p) = this.rows(cx).get(this.selected) {
+                if let Some(p) = this.rows(cx).get(this.selected.unwrap_or(0)) {
                     this.open_url(&p.url, window, cx);
                 }
             }))

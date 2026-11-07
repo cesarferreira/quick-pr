@@ -86,6 +86,8 @@ Red takes priority over green, then blue. The first sync is quiet, and unread ac
 
 Click **☆ Watch** on a row to follow a PR. Search by title, repository, author, or number. Click its title to open it in your browser.
 
+Each row shows how long ago its review, CI, draft, or PR state last changed as observed by Quick PR. Hover the time for its exact UTC timestamp and source. Before a status change is observed, the time comes from GitHub activity or the first time Quick PR saw the PR. These times survive restarts.
+
 ## Shortcuts
 
 | Shortcut | Action |
