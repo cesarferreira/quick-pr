@@ -514,7 +514,12 @@ impl QuickPr {
                             .mt(px(2.))
                             .text_size(px(11.))
                             .text_color(cx.theme().muted_foreground)
-                            .child(format!("{}  ·  #{}  ·  {}", pr.repo, pr.number, pr.author)),
+                            .child(format!(
+                                "{}  ·  #{}  ·  {}",
+                                pr.repo,
+                                pr.number,
+                                pr.author_label(&self.snapshot.login)
+                            )),
                     )
                     .child(
                         div()

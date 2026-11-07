@@ -57,6 +57,15 @@ impl PullRequest {
                 .sum(),
         })
     }
+    pub fn author_label(&self, viewer: &str) -> String {
+        if self.author == "deleted user" {
+            self.author.clone()
+        } else if !viewer.is_empty() && self.author.eq_ignore_ascii_case(viewer) {
+            "@me".into()
+        } else {
+            format!("@{}", self.author)
+        }
+    }
     pub fn review_label(&self) -> &str {
         match self.state.as_str() {
             "MERGED" => "Merged",

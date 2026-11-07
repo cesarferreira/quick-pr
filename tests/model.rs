@@ -137,3 +137,14 @@ fn public_demo_uses_only_fictional_accounts_and_repositories() {
         assert_eq!(pr.url, "https://github.com/pulls");
     }
 }
+
+#[test]
+fn author_labels_use_me_only_for_the_signed_in_account() {
+    let mut pr = PullRequest::from_node(&node()).unwrap();
+    pr.author = "Demo-User".into();
+    assert_eq!(pr.author_label("demo-user"), "@me");
+    assert_eq!(pr.author_label("someone-else"), "@Demo-User");
+    assert_eq!(pr.author_label(""), "@Demo-User");
+    pr.author = "deleted user".into();
+    assert_eq!(pr.author_label("demo-user"), "deleted user");
+}
