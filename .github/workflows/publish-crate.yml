@@ -5,7 +5,6 @@ on:
       source_ref:
         description: Exact release commit or tag to publish
         required: true
-        default: 98dae37e84d68a06fe2e02f05ff2615dafe8caa6
       version:
         description: Expected crate version
         required: true

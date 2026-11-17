@@ -40,7 +40,7 @@ Native Rust + GPUI, with Liquid Glass on supported macOS versions and a blurred 
 
 ## Install
 
-Requires **macOS 12+** and GitHub CLI. Download the app for **Apple Silicon** (`aarch64`) or **Intel** (`x86_64`) from [the latest release](https://github.com/cesarferreira/quick-pr/releases/latest), unzip it, and move **Quick PR.app** to Applications.
+Requires **macOS 12+**, an **Apple Silicon** Mac, and GitHub CLI. Download the app (`aarch64`) from [the latest release](https://github.com/cesarferreira/quick-pr/releases/latest), unzip it, and move **Quick PR.app** to Applications.
 
 The downloads are ad-hoc signed; notarization is not configured.
 
@@ -167,8 +167,8 @@ tests, formatting checks, and Clippy first. The actual release requires a public
 repository; it never changes repository visibility.
 
 `cargo-release` updates the version and `CHANGELOG.md`, commits those changes,
-publishes to crates.io locally, then tags and pushes `v<version>`. That tag triggers GitHub Actions to build Apple Silicon and
-Intel `.app` ZIPs and attach them, with SHA-256 checksums, to a GitHub release.
+publishes to crates.io locally, then tags and pushes `v<version>`. That tag triggers GitHub Actions to build the Apple Silicon
+`.app` ZIP and attach them, with SHA-256 checksums, to a GitHub release.
 The apps are ad-hoc signed, without notarization. If packaging fails after the
 crate is published, fix the workflow and rerun it on the same tag; crates.io
 versions cannot be overwritten.
