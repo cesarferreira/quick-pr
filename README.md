@@ -40,7 +40,9 @@ Native Rust + GPUI, with Liquid Glass on supported macOS versions and a blurred 
 
 ## Install
 
-Currently built from source. You’ll need **macOS 12+**, [Rust](https://rustup.rs/) (current stable), and Xcode Command Line Tools.
+Requires **macOS 12+** and GitHub CLI. Download the app for **Apple Silicon** (`aarch64`) or **Intel** (`x86_64`) from [the latest release](https://github.com/cesarferreira/quick-pr/releases/latest), unzip it, and move **Quick PR.app** to Applications.
+
+The downloads are ad-hoc signed; notarization is not configured.
 
 Set up GitHub CLI if you haven’t already:
 
@@ -49,7 +51,14 @@ brew install gh
 gh auth login
 ```
 
-Then build and install:
+For the standalone executable, install [Rust](https://rustup.rs/) and run:
+
+```sh
+cargo install quick-pr --locked
+quick-pr
+```
+
+Open at login requires the app bundle. To build and install it from source, install Xcode Command Line Tools and current stable Rust, then run:
 
 ```sh
 git clone https://github.com/cesarferreira/quick-pr.git
