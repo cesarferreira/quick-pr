@@ -134,6 +134,10 @@ fn public_demo_uses_only_fictional_accounts_and_repositories() {
     {
         assert!(pr.author.starts_with("demo-"));
         assert!(pr.repo.starts_with("demo/"));
+        assert!(pr.base_repo.starts_with("demo/"));
+        assert!(pr.head_repo.starts_with("demo/"));
+        assert!(pr.head_ref.starts_with("demo-"));
+        assert!(pr.base_ref == "main" || pr.base_ref.starts_with("demo-"));
         assert_eq!(pr.url, "https://github.com/pulls");
     }
 }

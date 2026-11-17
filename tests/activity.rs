@@ -191,3 +191,20 @@ fn existing_watched_pr_getting_a_personal_review_request_is_an_update() {
             .starts_with("Review requested:")
     );
 }
+
+#[test]
+fn branch_metadata_migration_does_not_create_unread_activity() {
+    let current = demo();
+    let mut cached = current.clone();
+    for pr in cached.needs.iter_mut().chain(&mut cached.yours) {
+        pr.base_ref.clear();
+        pr.head_ref.clear();
+        pr.base_repo.clear();
+        pr.head_repo.clear();
+    }
+    let mut activity = Activity::default();
+    let prefs = Preferences::default();
+    activity.observe(&cached, &prefs);
+    activity.observe(&current, &prefs);
+    assert!(activity.pending.is_empty());
+}

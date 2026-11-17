@@ -10,7 +10,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
   </p>
 
-  <img src="assets/demo-preview.png" width="640" alt="Quick PR demo showing fictional pull requests with activity, review and CI badges">
+  <img src="assets/stack-demo.gif" width="640" alt="Quick PR demo with fictional pull requests grouped into a collapsible stack">
   <p><sub>Fictional demo data.</sub></p>
 
   <p>
@@ -87,6 +87,8 @@ Red takes priority over green, then blue. The first sync is quiet, and unread ac
 Click **☆ Watch** on a row to follow a PR. Search by title, repository, author, or number. Click its title to open it in your browser.
 
 Each row shows how long ago its review, CI, draft, or PR state last changed as observed by Quick PR. Hover the time for its exact UTC timestamp and source. Before a status change is observed, the time comes from GitHub activity or the first time Quick PR saw the PR. These times survive restarts.
+
+Linear stacks appear as connected groups, ordered **Base → Top**, with shared repository and author badges. Quick PR detects links from GitHub base/head branches within the same repository, among PRs already in the current tab; missing parents and ambiguous branching relationships are not guessed. Click the group header to collapse it. Search keeps matching stacks together and expands them. **↑/↓** navigate visible rows; **Enter** expands a selected collapsed stack or opens a PR. Each stacked PR keeps its status, change time, and Watch control.
 
 ## Shortcuts
 

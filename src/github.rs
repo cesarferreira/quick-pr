@@ -23,6 +23,14 @@ pub struct PullRequest {
     pub comments: u64,
     #[serde(default)]
     pub updated_at: String,
+    #[serde(default)]
+    pub base_ref: String,
+    #[serde(default)]
+    pub head_ref: String,
+    #[serde(default)]
+    pub base_repo: String,
+    #[serde(default)]
+    pub head_repo: String,
 }
 impl PullRequest {
     pub fn from_node(v: &Value) -> Option<Self> {
@@ -36,6 +44,16 @@ impl PullRequest {
         Some(Self {
             id: v["id"].as_str()?.into(),
             updated_at: v["updatedAt"].as_str().unwrap_or_default().into(),
+            base_ref: v["baseRefName"].as_str().unwrap_or_default().into(),
+            head_ref: v["headRefName"].as_str().unwrap_or_default().into(),
+            base_repo: v["baseRepository"]["nameWithOwner"]
+                .as_str()
+                .unwrap_or_default()
+                .into(),
+            head_repo: v["headRepository"]["nameWithOwner"]
+                .as_str()
+                .unwrap_or_default()
+                .into(),
             title: v["title"].as_str()?.into(),
             url,
             number: v["number"].as_u64()?,
@@ -268,6 +286,8 @@ pub fn run_gh(args: &[&str]) -> Result<String> {
 const FIELDS: &str = r#"
     __typename id title url number state isDraft reviewDecision updatedAt
     author { login } repository { nameWithOwner }
+    baseRefName headRefName
+    baseRepository { nameWithOwner } headRepository { nameWithOwner }
     comments { totalCount } reviews { totalCount } reviewThreads { totalCount }
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
 "#;
@@ -472,7 +492,7 @@ pub fn demo() -> Snapshot {
         title: title.into(),
         repo: repo.into(),
         author: "demo-user".into(),
-        number: 1842,
+        number: 1842 + u64::from(id.as_bytes()[0] - b'a'),
         review: review.into(),
         checks: checks.into(),
         draft,
@@ -480,8 +500,12 @@ pub fn demo() -> Snapshot {
         url: "https://github.com/pulls".into(),
         comments: 2,
         updated_at: String::new(),
+        base_ref: "main".into(),
+        head_ref: format!("demo-{id}"),
+        base_repo: repo.into(),
+        head_repo: repo.into(),
     };
-    Snapshot {
+    let mut snapshot = Snapshot {
         relevance_version: RELEVANCE_VERSION,
         login: "demo-user".into(),
         saved_at: now(),
@@ -490,7 +514,7 @@ pub fn demo() -> Snapshot {
             pr(
                 "a",
                 "Improve keyboard navigation",
-                "demo/taskboard",
+                "demo/ui-kit",
                 "REVIEW_REQUIRED",
                 "SUCCESS",
                 false,
@@ -516,7 +540,7 @@ pub fn demo() -> Snapshot {
             pr(
                 "d",
                 "Polish the search experience",
-                "demo/ui-kit",
+                "demo/taskboard",
                 "APPROVED",
                 "SUCCESS",
                 false,
@@ -531,5 +555,8 @@ pub fn demo() -> Snapshot {
             ),
         ],
         ..Default::default()
-    }
+    };
+    snapshot.yours[1].base_ref = snapshot.yours[0].head_ref.clone();
+    snapshot.yours[2].base_ref = snapshot.yours[1].head_ref.clone();
+    snapshot
 }

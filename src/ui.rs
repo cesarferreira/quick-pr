@@ -8,10 +8,11 @@ use gpui_component::{
 use quick_pr::{
     activity::{Activity, Change, Indicator},
     github::{self, Preferences, PullRequest, Snapshot},
+    stacks::{self, Group},
     status_history::{StatusHistory, relative_age},
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
@@ -44,6 +45,13 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
+#[derive(Clone, Copy)]
+struct StackRow {
+    position: usize,
+    total: usize,
+    shared_author: bool,
+}
+
 type FetchResult = Result<Snapshot, String>;
 pub struct QuickPr {
     snapshot: Snapshot,
@@ -56,6 +64,7 @@ pub struct QuickPr {
     focus: FocusHandle,
     tab: usize,
     selected: Option<usize>,
+    collapsed_stacks: BTreeSet<String>,
     scroll: ScrollHandle,
     pinned: bool,
     loading: bool,
@@ -88,6 +97,7 @@ impl QuickPr {
         let search = cx.subscribe(&input, |this, _, event, cx| {
             if matches!(event, InputEvent::Change) {
                 this.selected = None;
+                this.collapsed_stacks.clear();
                 this.scroll.scroll_to_item(0);
                 cx.notify();
             }
@@ -154,6 +164,7 @@ impl QuickPr {
             focus: cx.focus_handle(),
             tab: 0,
             selected: None,
+            collapsed_stacks: BTreeSet::new(),
             scroll: ScrollHandle::new(),
             pinned: false,
             loading: false,
@@ -306,6 +317,8 @@ impl QuickPr {
                     }
                     if self.snapshot.login != snapshot.login {
                         self.highlights.clear();
+                        self.collapsed_stacks.clear();
+                        self.selected = None;
                     }
                     self.status_history.observe(&snapshot);
                     self.activity.observe(&snapshot, &self.prefs);
@@ -350,7 +363,7 @@ impl QuickPr {
             cx.notify();
         }
     }
-    fn rows(&self, cx: &App) -> Vec<PullRequest> {
+    fn groups(&self, cx: &App) -> Vec<Group> {
         let watching;
         let relevant;
         let list = match self.tab {
@@ -374,14 +387,31 @@ impl QuickPr {
             }
         };
         let filter = self.input.read(cx).value().to_lowercase();
-        list.iter()
-            .filter(|p| {
-                format!("{} {} {} #{}", p.title, p.repo, p.author, p.number)
-                    .to_lowercase()
-                    .contains(&filter)
-            })
-            .cloned()
+        stacks::groups(list)
+            .into_iter()
+            .filter(|group| group.matches(&filter))
             .collect()
+    }
+    fn rows(&self, cx: &App) -> Vec<PullRequest> {
+        stacks::navigation(&self.groups(cx), &self.collapsed_stacks)
+            .into_iter()
+            .map(|row| row.pr)
+            .collect()
+    }
+    fn scroll_to_selected(&self, cx: &App) {
+        if let Some(index) = self.selected
+            && let Some(row) =
+                stacks::navigation(&self.groups(cx), &self.collapsed_stacks).get(index)
+        {
+            self.scroll.scroll_to_item(row.scroll_index);
+        }
+    }
+    fn toggle_stack(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !self.collapsed_stacks.remove(key) {
+            self.collapsed_stacks.insert(key.to_owned());
+        }
+        self.selected = None;
+        cx.notify();
     }
     fn watch(&mut self, pr: PullRequest, cx: &mut Context<Self>) {
         if self.prefs.watched.contains(&pr.id) {
@@ -445,7 +475,160 @@ impl QuickPr {
             .child(text.to_string())
             .hover(|s| s.bg(rgba(0x88888822)))
     }
-    fn pr_row(&self, pr: PullRequest, index: usize, cx: &mut Context<Self>) -> AnyElement {
+    fn repo_badge(repo: &str, dark: bool) -> Div {
+        let hue = repo
+            .to_ascii_lowercase()
+            .bytes()
+            .fold(2_166_136_261u32, |hash, byte| {
+                (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+            })
+            % 360;
+        let color = hsla(hue as f32 / 360., 0.65, if dark { 0.76 } else { 0.32 }, 1.);
+        div()
+            .px(px(5.))
+            .py(px(1.))
+            .rounded_md()
+            .bg(hsla(color.h, color.s, color.l, 0.14))
+            .text_color(color)
+            .font_weight(FontWeight::MEDIUM)
+            .child(repo.to_owned())
+    }
+    fn author_badge(&self, pr: &PullRequest, cx: &App) -> Div {
+        let own =
+            !self.snapshot.login.is_empty() && pr.author.eq_ignore_ascii_case(&self.snapshot.login);
+        div()
+            .px(px(5.))
+            .py(px(1.))
+            .rounded_md()
+            .bg(if own {
+                rgb(if cx.theme().mode.is_dark() {
+                    0x7352b8
+                } else {
+                    0x6840ac
+                })
+            } else {
+                rgba(0x88888820)
+            })
+            .text_color(if own {
+                rgb(0xffffff).into()
+            } else {
+                cx.theme().muted_foreground
+            })
+            .font_weight(if own {
+                FontWeight::SEMIBOLD
+            } else {
+                FontWeight::MEDIUM
+            })
+            .child(pr.author_label(&self.snapshot.login))
+    }
+    fn time_label(&self, pr: &PullRequest, cx: &App) -> Option<AnyElement> {
+        self.status_history.change_time(&pr.id).map(|time| {
+            let now = github::now();
+            let dark = cx.theme().mode.is_dark();
+            let color = match now.saturating_sub(time.at) {
+                0..3600 => {
+                    if dark {
+                        0x54cba0
+                    } else {
+                        0x16734e
+                    }
+                }
+                3600..86400 => {
+                    if dark {
+                        0xdab36a
+                    } else {
+                        0x895b0a
+                    }
+                }
+                _ => {
+                    if dark {
+                        0xb6b6c0
+                    } else {
+                        0x60606a
+                    }
+                }
+            };
+            div()
+                .id(SharedString::from(format!("change-time-{}", pr.id)))
+                .ml_1()
+                .flex_shrink_0()
+                .text_size(px(11.))
+                .text_color(rgb(color))
+                .child(relative_age(time.at, now))
+                .tooltip(move |window, cx| Tooltip::new(time.tooltip()).build(window, cx))
+                .into_any_element()
+        })
+    }
+    fn stack_header(&self, group: &Group, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let key = group.key().to_owned();
+        let collapsed = self.collapsed_stacks.contains(&key);
+        let dark = cx.theme().mode.is_dark();
+        let purple = rgb(if dark { 0xa78bfa } else { 0x7852b8 });
+        let hint = if collapsed {
+            "Expand stack · Enter when selected"
+        } else {
+            "Collapse stack"
+        };
+        div()
+            .id(SharedString::from(format!("stack-{key}")))
+            .mt_2()
+            .px_2()
+            .py_2()
+            .w_full()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_2()
+            .rounded_t_xl()
+            .when(collapsed, |s| s.rounded_b_xl().mb_2())
+            .bg(rgba(0x88888812))
+            .cursor_pointer()
+            .when(collapsed && self.selected == Some(index), |s| {
+                s.bg(rgba(0x88888832))
+            })
+            .hover(|s| s.bg(rgba(0x88888827)))
+            .tooltip(move |window, cx| Tooltip::new(hint).build(window, cx))
+            .on_click(cx.listener(move |this, _, _, cx| this.toggle_stack(&key, cx)))
+            .child(
+                Icon::new(if collapsed {
+                    IconName::ChevronRight
+                } else {
+                    IconName::ChevronDown
+                })
+                .size_3(),
+            )
+            .child(
+                Icon::new(IconName::GalleryVerticalEnd)
+                    .size(px(14.))
+                    .text_color(purple),
+            )
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(format!("Stack · {} PRs", group.prs.len())),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .child(Self::repo_badge(&group.prs[0].repo, dark)),
+            )
+            .when(group.shared_author(), |s| {
+                s.child(
+                    div()
+                        .text_size(px(11.))
+                        .child(self.author_badge(&group.prs[0], cx)),
+                )
+            })
+            .into_any_element()
+    }
+    fn pr_row(
+        &self,
+        pr: PullRequest,
+        index: usize,
+        stack: Option<StackRow>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let selected = self.selected == Some(index);
         let change = self.highlights.get(&pr.id).cloned();
         let watched = self.prefs.watched.contains(&pr.id);
@@ -491,28 +674,6 @@ impl QuickPr {
         } else {
             review_color
         };
-        // Stable across refreshes, sort order, and restarts; GitHub names ignore case.
-        let repo_hue = pr
-            .repo
-            .to_ascii_lowercase()
-            .bytes()
-            .fold(2_166_136_261u32, |hash, byte| {
-                (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
-            })
-            % 360;
-        let repo_color = hsla(
-            repo_hue as f32 / 360.,
-            0.65,
-            if dark { 0.76 } else { 0.32 },
-            1.,
-        );
-        let own =
-            !self.snapshot.login.is_empty() && pr.author.eq_ignore_ascii_case(&self.snapshot.login);
-        let author_background = if own {
-            rgb(if dark { 0x7352b8 } else { 0x6840ac })
-        } else {
-            rgba(0x88888820)
-        };
         let url = pr.url.clone();
         let star = pr.clone();
         div()
@@ -526,12 +687,58 @@ impl QuickPr {
             .w_full()
             .when(selected, |s| s.bg(rgba(0x8888881c)))
             .hover(|s| s.bg(rgba(0x88888827)))
-            .child(
-                div()
-                    .pt_1()
-                    .text_color(rgb(color))
-                    .child(Icon::new(IconName::GitHub).size(px(14.))),
-            )
+            .when(stack.is_none(), |s| {
+                s.child(
+                    div()
+                        .pt_1()
+                        .text_color(rgb(color))
+                        .child(Icon::new(IconName::GitHub).size(px(14.))),
+                )
+            })
+            .when_some(stack, |s, stack| {
+                let mut line = div().absolute().left(px(3.5)).w(px(1.)).bg(rgb(purple));
+                line = if stack.position == 0 {
+                    line.top(px(8.)).bottom(px(-8.))
+                } else if stack.position + 1 == stack.total {
+                    line.top(px(-8.)).h(px(16.))
+                } else {
+                    line.top(px(-8.)).bottom(px(-8.))
+                };
+                let role = if stack.position == 0 {
+                    " BASE"
+                } else if stack.position + 1 == stack.total {
+                    " TOP"
+                } else {
+                    ""
+                };
+                let mut rail = div().relative().w(px(8.)).flex_shrink_0();
+                rail.style().align_self = Some(AlignSelf::Stretch);
+                s.child(
+                    rail.child(line).child(
+                        div()
+                            .absolute()
+                            .left(px(1.))
+                            .top(px(5.))
+                            .size(px(6.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(rgb(purple))
+                            .bg(rgb(if dark { 0x252529 } else { 0xf0eff4 })),
+                    ),
+                )
+                .child(
+                    div()
+                        .w(px(62.))
+                        .flex_shrink_0()
+                        .px(px(4.))
+                        .py(px(2.))
+                        .rounded_md()
+                        .text_size(px(10.))
+                        .text_color(rgb(purple))
+                        .bg(rgba((purple << 8) | 0x20))
+                        .child(format!("{}/{}{role}", stack.position + 1, stack.total)),
+                )
+            })
             .child(
                 div()
                     .id(SharedString::from(format!("open-{}", pr.id)))
@@ -543,67 +750,49 @@ impl QuickPr {
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(pr.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .text_size(px(11.))
                             .flex()
-                            .flex_wrap()
-                            .items_center()
+                            .items_start()
                             .gap_1()
-                            .text_color(cx.theme().muted_foreground)
                             .child(
                                 div()
-                                    .px(px(5.))
-                                    .py(px(1.))
-                                    .rounded_md()
-                                    .bg(hsla(repo_color.h, repo_color.s, repo_color.l, 0.14))
-                                    .text_color(repo_color)
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_size(px(13.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(pr.repo.clone()),
-                            )
-                            .child(format!("#{}", pr.number))
-                            .child(
-                                div()
-                                    .px(px(5.))
-                                    .py(px(1.))
-                                    .rounded_md()
-                                    .bg(author_background)
-                                    .text_color(if own {
-                                        rgb(0xffffff).into()
+                                    .child(if stack.is_some() {
+                                        format!("#{} {}", pr.number, pr.title)
                                     } else {
-                                        cx.theme().muted_foreground
-                                    })
-                                    .font_weight(if own {
-                                        FontWeight::SEMIBOLD
-                                    } else {
-                                        FontWeight::MEDIUM
-                                    })
-                                    .child(pr.author_label(&self.snapshot.login)),
+                                        pr.title.clone()
+                                    }),
                             )
-                            .when_some(self.status_history.change_time(&pr.id), |row, time| {
-                                let now = github::now();
-                                let time_color = match now.saturating_sub(time.at) {
-                                    0..3600 => green,
-                                    3600..86400 => amber,
-                                    _ => gray,
-                                };
-                                row.child(
-                                    div()
-                                        .id(SharedString::from(format!("change-time-{}", pr.id)))
-                                        .ml_1()
-                                        .text_color(rgb(time_color))
-                                        .child(relative_age(time.at, now))
-                                        .tooltip(move |window, cx| {
-                                            Tooltip::new(time.tooltip()).build(window, cx)
-                                        }),
-                                )
+                            .when(stack.is_some(), |s| {
+                                s.when_some(self.time_label(&pr, cx), |s, time| s.child(time))
                             }),
                     )
+                    .when(stack.is_none(), |s| {
+                        s.child(
+                            div()
+                                .mt(px(2.))
+                                .text_size(px(11.))
+                                .flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap_1()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(Self::repo_badge(&pr.repo, dark))
+                                .child(format!("#{}", pr.number))
+                                .child(self.author_badge(&pr, cx))
+                                .when_some(self.time_label(&pr, cx), |s, time| s.child(time)),
+                        )
+                    })
+                    .when(stack.is_some_and(|stack| !stack.shared_author), |s| {
+                        s.child(
+                            div()
+                                .mt(px(2.))
+                                .text_size(px(11.))
+                                .child(self.author_badge(&pr, cx)),
+                        )
+                    })
                     .child(
                         div()
                             .mt_1()
@@ -658,7 +847,9 @@ impl QuickPr {
                     .hover(|s| s.bg(rgba(0x88888833)))
                     .on_click(cx.listener(move |this, _, _, cx| this.watch(star.clone(), cx)))
                     .child(Icon::new(IconName::Star).size(px(14.)))
-                    .child(if watched { "Watching" } else { "Watch" }),
+                    .when(stack.is_none(), |s| {
+                        s.child(if watched { "Watching" } else { "Watch" })
+                    }),
             )
             .into_any_element()
     }
@@ -714,18 +905,26 @@ impl Render for QuickPr {
                     .map_or(0, |index| index.saturating_add(1))
                     .min(this.rows(cx).len().saturating_sub(1));
                 this.selected = Some(index);
-                this.scroll.scroll_to_item(index);
+                this.scroll_to_selected(cx);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &Previous, _, cx| {
                 let index = this.selected.map_or(0, |index| index.saturating_sub(1));
                 this.selected = Some(index);
-                this.scroll.scroll_to_item(index);
+                this.scroll_to_selected(cx);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &OpenSelected, window, cx| {
-                if let Some(p) = this.rows(cx).get(this.selected.unwrap_or(0)) {
-                    this.open_url(&p.url, window, cx);
+                let rows = stacks::navigation(&this.groups(cx), &this.collapsed_stacks);
+                if let Some(row) = rows.get(this.selected.unwrap_or(0)) {
+                    if row.collapsed {
+                        let index = this.selected.unwrap_or(0);
+                        this.toggle_stack(&row.pr.id, cx);
+                        this.selected = Some(index);
+                        this.scroll_to_selected(cx);
+                    } else {
+                        this.open_url(&row.pr.url, window, cx);
+                    }
                 }
             }))
             .child(
@@ -923,8 +1122,46 @@ impl Render for QuickPr {
                     .child(div().text_size(px(12.)).child(detail)),
             );
         } else {
-            for (i, pr) in rows.into_iter().enumerate() {
-                list = list.child(self.pr_row(pr, i, cx));
+            let mut index = 0;
+            for group in self.groups(cx) {
+                if group.is_stack() {
+                    let collapsed = self.collapsed_stacks.contains(group.key());
+                    list = list.child(self.stack_header(&group, index, cx));
+                    if collapsed {
+                        index += 1;
+                    } else {
+                        let total = group.prs.len();
+                        let shared_author = group.shared_author();
+                        for (position, pr) in group.prs.into_iter().enumerate() {
+                            list = list.child(
+                                div()
+                                    .w_full()
+                                    .px_1()
+                                    .bg(rgba(0x88888812))
+                                    .when(position + 1 == total, |s| s.rounded_b_xl().mb_2().pb_1())
+                                    .child(self.pr_row(
+                                        pr,
+                                        index,
+                                        Some(StackRow {
+                                            position,
+                                            total,
+                                            shared_author,
+                                        }),
+                                        cx,
+                                    )),
+                            );
+                            index += 1;
+                        }
+                    }
+                } else {
+                    list = list.child(self.pr_row(
+                        group.prs.into_iter().next().unwrap(),
+                        index,
+                        None,
+                        cx,
+                    ));
+                    index += 1;
+                }
             }
         }
         body = body.child(list);

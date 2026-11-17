@@ -156,6 +156,13 @@ fn unchanged(old: &Entry, current: &Entry) -> bool {
     if previous.updated_at.is_empty() {
         previous.updated_at = current.pr.updated_at.clone();
     }
+    // Older caches predate branch metadata; its arrival is not new activity.
+    if previous.base_ref.is_empty() && previous.head_ref.is_empty() {
+        previous.base_ref = current.pr.base_ref.clone();
+        previous.head_ref = current.pr.head_ref.clone();
+        previous.base_repo = current.pr.base_repo.clone();
+        previous.head_repo = current.pr.head_repo.clone();
+    }
     previous == current.pr && old.requested == current.requested
 }
 
