@@ -1,0 +1,39 @@
+name: Publish crate
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact release commit or tag to publish
+        required: true
+        default: 98dae37e84d68a06fe2e02f05ff2615dafe8caa6
+      version:
+        description: Expected crate version
+        required: true
+        default: 0.1.0
+permissions:
+  contents: read
+concurrency:
+  group: publish-crate-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify release source
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          test "$version" = "$EXPECTED_VERSION"
+          test -z "$(git status --porcelain)"
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo 'CARGO_REGISTRY_TOKEN secret is required'; exit 1; }
+          cargo publish --locked
